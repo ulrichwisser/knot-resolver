@@ -1,3 +1,6 @@
+- REORDER_RR option reimplemented for libknot >= 2.7.0
+
+
 Knot Resolver 2.0.0 (2018-01-31)
 ================================
 

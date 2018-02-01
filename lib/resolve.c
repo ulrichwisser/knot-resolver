@@ -39,6 +39,11 @@
 
 #define VERBOSE_MSG(qry, fmt...) QRVERBOSE((qry), "resl",  fmt)
 
+/* A slight hack for zeroing the flag if not supported. */
+#if KNOT_VERSION_HEX < ((2 << 16) | (7 << 8) | 0)
+	#define KNOT_PF_ROTATE 0
+#endif
+
 bool kr_rank_check(uint8_t rank)
 {
 	switch (rank & ~KR_RANK_AUTH) {

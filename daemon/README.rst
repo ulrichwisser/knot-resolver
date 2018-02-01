@@ -271,6 +271,7 @@ Environment
 
    If set, resolver will vary the order of resource records within RR-sets.
    It is disabled by default.
+   Note: this has no effect when built against libknot < 2.7.0.
 
 .. function:: user(name, [group])
 
