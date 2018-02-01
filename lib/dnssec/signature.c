@@ -182,7 +182,8 @@ static int sign_ctx_add_records(dnssec_sign_ctx_t *ctx, const knot_rrset_t *cove
 
 	// huge block of rrsets can be optionally created
 	static uint8_t wire_buffer[KNOT_WIRE_MAX_PKTSIZE];
-	int written = knot_rrset_to_wire(covered, wire_buffer, sizeof(wire_buffer), NULL);
+	int written = knot_rrset_to_wire(covered, wire_buffer, sizeof(wire_buffer),
+					 0, NULL);
 	if (written < 0) {
 		return written;
 	}
