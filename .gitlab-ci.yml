@@ -347,14 +347,14 @@ pages:
 
 # trigger obs build for master branch
 obs:
-  stage: deploy
+  stage: test  # TODO: move to deploy
   only:
-    - master
+    - rpmbuild-in-ci  # TODO: change before merging
   dependencies: []
   script:
     - scripts/make-archive.sh
     - scripts/make-spec.sh
-    - echo -e "[general]\napiurl = https://api.opensuse.org\n\n[https://api.opensuse.org]\nuser = CZ-NIC\npass = $OBS_PASSWORD" > /root/.oscrc
+    - echo -e "[general]\napiurl = https://api.opensuse.org\n\n[https://api.opensuse.org]\nuser = CZ-NIC\npass = $OBS_PASSWORD" > /root/.oscrc  # TODO: set variable as protected
     - osc co home:CZ-NIC:knot-devel knot-resolver
     - cd home\:CZ-NIC\:knot-devel/knot-resolver/
     - osc del *
