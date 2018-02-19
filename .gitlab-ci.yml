@@ -349,7 +349,7 @@ pages:
 obs:
   stage: test  # TODO: move to deploy
   only:
-    - rpmbuild-in-ci  # TODO: change before merging
+    - arch-obs  # TODO: change before merging
   dependencies: []
   script:
     - scripts/make-archive.sh
