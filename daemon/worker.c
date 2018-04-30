@@ -2482,6 +2482,7 @@ static int worker_reserve(struct worker_ctx *worker, size_t ring_maxlen)
 	worker->tcp_waiting = map_make(NULL);
 	worker->tcp_pipeline_max = MAX_PIPELINED;
 	memset(&worker->stats, 0, sizeof(worker->stats));
+	worker->tls_session_cache = tls_session_cache_db_allocate(worker);
 	return kr_ok();
 }
 
@@ -2508,6 +2509,9 @@ void worker_reclaim(struct worker_ctx *worker)
 	if (worker->z_import != NULL) {
 		zi_free(worker->z_import);
 		worker->z_import = NULL;
+	}
+	if (worker->tls_session_cache != NULL) {
+		tls_session_cache_db_delete(worker->tls_session_cache);
 	}
 }
 
