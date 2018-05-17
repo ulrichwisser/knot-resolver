@@ -91,7 +91,6 @@ struct tls_ctx_t {
 	 */
 	struct tls_common_ctx c;
 	struct tls_credentials *credentials;
-	tls_session_cache_db_t *session_cache;
 };
 
 struct tls_client_ctx_t {

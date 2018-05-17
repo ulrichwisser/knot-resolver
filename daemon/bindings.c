@@ -624,6 +624,29 @@ static int net_tls_padding(lua_State *L)
 	return 1;
 }
 
+/**
+ * Allocate data structures to ensure TLS session resumption mechanism working
+ * (session id caching as well as session ticket).
+ * If structrues were previosly allocated, deletes them. This means that
+ * all attempts of session resumption using previosly cached data will fallback
+ * to full handshake.
+ *
+ * if no parameters passed from Lua, only prints current settings.
+ *
+ * expects two parameters from Lua -
+ * int num -         maximal number of records in the session id database.
+ *                   Each particular database record is a
+ *                   struct tls_session_cache_db_entry (see tls.c),
+ *                   tls_session_cache_db_entry->session_data points to copy of the data
+ *                   allocated by gnutls after establishing tls connection.
+ *                   Database contains <num> or less last recently used records,
+ *		     so it is maximal number of session that can be resumed at once.
+ * int exp_interval - record expiration interval in seconds.
+ *                   If lifetime of db records exceeds exp_interval,
+ *                   session won't be resumed.
+ *
+ * expiration of session ticket is hardcored to 3600 seconds (see tls_session_ticket_timer_start()).
+ */
 static int net_tls_session_db(lua_State *L)
 {
 	struct engine *engine = engine_luaget(L);

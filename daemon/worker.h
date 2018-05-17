@@ -21,7 +21,6 @@
 #include "daemon/engine.h"
 #include "lib/generic/array.h"
 #include "lib/generic/map.h"
-#include "daemon/tls.h"
 
 
 /** Query resolution task (opaque). */

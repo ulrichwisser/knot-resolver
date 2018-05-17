@@ -55,10 +55,10 @@
 static char const server_logstring[] = "tls";
 static char const client_logstring[] = "tls_client";
 
-typedef struct tls_session_cache_db_entry {
+struct tls_session_cache_db_entry {
 	unsigned int session_data_size;
 	unsigned char session_data[];
-} tls_session_cache_db_entry_t;
+};
 
 static int client_verify_certificate(gnutls_session_t tls_session);
 
@@ -970,6 +970,7 @@ int tls_client_ctx_set_params(struct tls_client_ctx_t *ctx,
 
 tls_session_cache_db_t *tls_session_cache_db_allocate(size_t tls_session_db_size)
 {
+	assert(tls_session_db_size > 0);
 	tls_session_cache_db_t *lru = NULL;
 	if (tls_session_db_size > 0) {
 		lru_create(&lru, tls_session_db_size, NULL, NULL);
@@ -990,9 +991,9 @@ int session_db_store(void *db, gnutls_datum_t key, gnutls_datum_t data)
 	struct worker_ctx *worker = tls->c.worker;
 	struct network *net = &worker->engine->net;
 	tls_session_cache_db_t *cache_db = net->tls_session_cache;
-	tls_session_cache_db_entry_t *entry = lru_get_impl(&cache_db->lru, (const char *)key.data, key.size,
-							   sizeof(tls_session_cache_db_entry_t) + data.size,
-							   true, NULL);
+	struct tls_session_cache_db_entry *entry = lru_get_impl(&cache_db->lru, (const char *)key.data, key.size,
+								sizeof(struct tls_session_cache_db_entry) + data.size,
+								true, NULL);
 	if (entry == NULL) {
 		return -1;
 	}
@@ -1008,7 +1009,7 @@ gnutls_datum_t session_db_fetch(void *db, gnutls_datum_t key)
 	struct worker_ctx *worker = tls->c.worker;
 	struct network *net = &worker->engine->net;
 	tls_session_cache_db_t *cache_db = net->tls_session_cache;
-	tls_session_cache_db_entry_t *entry = lru_get_try(cache_db, (const char *)key.data, key.size);
+	struct tls_session_cache_db_entry *entry = lru_get_try(cache_db, (const char *)key.data, key.size);
 	if (entry != NULL) {
 		gnutls_datum_t check_time = { .data = entry->session_data,
 					      .size = entry->session_data_size };
