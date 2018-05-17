@@ -64,6 +64,92 @@ static int client_verify_certificate(gnutls_session_t tls_session);
 
 static int session_db_store(void *db, gnutls_datum_t key, gnutls_datum_t data);
 static gnutls_datum_t session_db_fetch(void *db, gnutls_datum_t key);
+
+
+/* FIXME: review session_ticket_key* again before merge! */
+/** Value from gnutls:lib/ext/session_ticket.c
+ * Beware: changing this needs to change the hashing implementation. */
+#define SESSION_KEY_SIZE 64
+
+/** Fields are internal to session_ticket_key_* functions. */
+struct session_ticket_key {
+	char key[SESSION_KEY_SIZE];
+	uint16_t hash_len;
+	char hash_data[];
+};
+
+/** Check invariants, based on gnutls version. */
+static bool session_ticket_key_invariants(void)
+{
+	static int result = 0;
+	if (result) return result > 0;
+	bool ok = true;
+	/* SHA3-512 output size may never change, but let's check it anyway :-) */
+	ok = ok && gnutls_hash_get_len(GNUTLS_DIG_SHA3_512) == SESSION_KEY_SIZE;
+	/* The ticket key size might change in a different gnutls version. */
+	gnutls_datum_t key = { 0, 0 };
+	ok = ok && gnutls_session_ticket_key_generate(&key) == 0
+		&& key.size == SESSION_KEY_SIZE;
+	free(key.data);
+	result = ok ? 1 : -1;
+	return ok;
+}
+
+/** Create the internal structures and copy the salt. Beware: salt must be kept secure. */
+static struct session_ticket_key * session_ticket_key_create(const char *salt, size_t salt_len)
+{
+	const size_t hash_len = sizeof(size_t) + salt_len;
+	if (!salt || !salt_len || hash_len > UINT16_MAX || hash_len < salt_len) {
+		assert(!EINVAL);
+		return NULL;
+		/* reasonable salt_len is best enforced in config API */
+	}
+	if (!session_ticket_key_invariants()) {
+		assert(!EFAULT);
+		return NULL;
+	}
+	struct session_ticket_key *key =
+		malloc(offsetof(struct session_ticket_key, hash_data) + hash_len);
+	if (!key) return NULL;
+	key->hash_len = hash_len;
+	memcpy(key->hash_data + sizeof(size_t), salt, salt_len);
+	return key;
+}
+
+/** Recompute the session ticket key, deterministically from epoch and salt. */
+static int session_ticket_key_recompute(struct session_ticket_key *key, size_t epoch)
+{
+	if (!key || key->hash_len <= sizeof(size_t)) {
+		assert(!EINVAL);
+		return kr_error(EINVAL);
+	}
+	memcpy(key->hash_data, &epoch, sizeof(size_t));
+		/* TODO: ^^ support mixing endians? */
+	int ret = gnutls_hash_fast(GNUTLS_DIG_SHA3_512, key->hash_data,
+				   key->hash_len, key->key);
+	return ret == 0 ? kr_ok() : kr_error(ret);
+}
+
+/** Return reference to a key in the format suitable for gnutls. */
+static inline gnutls_datum_t session_ticket_key_get(struct session_ticket_key *key)
+{
+	assert(key);
+	return (gnutls_datum_t){
+		.size = SESSION_KEY_SIZE,
+		.data = (unsigned char *)key,
+	};
+}
+
+/** Free all resources of the key (securely). */
+static void session_ticket_key_destroy(struct session_ticket_key *key)
+{
+	assert(key);
+	gnutls_memset(key, 0, offsetof(struct session_ticket_key, hash_data)
+				+ key->hash_len);
+	free(key);
+}
+
+
 /**
  * Set mandatory security settings from
  * https://tools.ietf.org/html/draft-ietf-dprive-dtls-and-tls-profiles-11#section-9
