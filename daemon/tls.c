@@ -51,6 +51,12 @@
 #define tls_memset memset
 #endif
 
+#if GNUTLS_VERSION_NUMBER >= 0x030407
+#define SESSION_TICKET_KEYGEN_HASH GNUTLS_DIG_SHA3_512
+#else
+#define SESSION_TICKET_KEYGEN_HASH GNUTLS_DIG_SHA512
+#endif
+
 #define TLS_SESSION_TICKET_KEY_REGENERATION_INTERVAL 3600000
 
 static char const server_logstring[] = "tls";
@@ -83,7 +89,7 @@ static bool session_ticket_key_invariants(void)
 	if (result) return result > 0;
 	bool ok = true;
 	/* SHA3-512 output size may never change, but let's check it anyway :-) */
-	ok = ok && gnutls_hash_get_len(GNUTLS_DIG_SHA3_512) == SESSION_KEY_SIZE;
+	ok = ok && gnutls_hash_get_len(SESSION_TICKET_KEYGEN_HASH) == SESSION_KEY_SIZE;
 	/* The ticket key size might change in a different gnutls version. */
 	gnutls_datum_t key = { 0, 0 };
 	ok = ok && gnutls_session_ticket_key_generate(&key) == 0
@@ -123,7 +129,7 @@ static int session_ticket_key_recompute(struct session_ticket_key *key, size_t e
 	}
 	memcpy(key->hash_data, &epoch, sizeof(size_t));
 		/* TODO: ^^ support mixing endians? */
-	int ret = gnutls_hash_fast(GNUTLS_DIG_SHA3_512, key->hash_data,
+	int ret = gnutls_hash_fast(SESSION_TICKET_KEYGEN_HASH, key->hash_data,
 				   key->hash_len, key->key);
 	return ret == 0 ? kr_ok() : kr_error(ret);
 }
