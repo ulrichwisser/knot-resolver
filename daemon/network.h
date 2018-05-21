@@ -19,7 +19,6 @@
 #include <uv.h>
 #include <stdbool.h>
 
-#include "daemon/tls.h"
 #include "lib/generic/array.h"
 #include "lib/generic/map.h"
 

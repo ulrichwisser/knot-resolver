@@ -48,9 +48,6 @@ struct tls_client_paramlist_entry {
 
 struct worker_ctx;
 struct qr_task;
-struct network;
-struct engine;
-struct session;
 
 typedef enum tls_client_hs_state {
 	TLS_HS_NOT_STARTED = 0,
@@ -61,10 +58,6 @@ typedef enum tls_client_hs_state {
 } tls_hs_state_t;
 
 typedef int (*tls_handshake_cb) (struct session *session, int status);
-
-struct tls_session_cache_db_entry;
-
-typedef lru_t(struct tls_session_cache_db_entry) tls_session_cache_db_t;
 
 struct tls_common_ctx {
 	bool client_side;

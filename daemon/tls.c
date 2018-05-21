@@ -34,7 +34,6 @@
 #include "daemon/worker.h"
 #include "daemon/tls.h"
 #include "daemon/io.h"
-#include "lib/generic/lru.h"
 
 #define EPHEMERAL_CERT_EXPIRATION_SECONDS_RENEW_BEFORE 60*60*24*7
 #define GNUTLS_PIN_MIN_VERSION  0x030400
@@ -57,13 +56,7 @@
 static char const server_logstring[] = "tls";
 static char const client_logstring[] = "tls_client";
 
-struct tls_session_cache_db_entry {
-	unsigned int session_data_size;
-	unsigned char session_data[];
-};
-
 static int client_verify_certificate(gnutls_session_t tls_session);
-
 
 /* FIXME: review session_ticket_key* again before merge! */
 /** Value from gnutls:lib/ext/session_ticket.c
@@ -261,8 +254,8 @@ struct tls_ctx_t *tls_new(struct worker_ctx *worker)
 	tls->c.client_side = false;
 
 	gnutls_transport_set_pull_function(tls->c.tls_session, kres_gnutls_pull);
-	gnutls_transport_set_ptr(tls->c.tls_session, tls);
 	gnutls_transport_set_push_function(tls->c.tls_session, worker_gnutls_push);
+	gnutls_transport_set_ptr(tls->c.tls_session, tls);
 
 	if (net->tls_session_ticket_ctx != NULL) {
 		assert(net->tls_session_ticket_ctx->key);
