@@ -52,11 +52,7 @@ void network_init(struct network *net, uv_loop_t *loop)
 		net->loop = loop;
 		net->endpoints = map_make(NULL);
 		net->tls_client_params = map_make(NULL);
-		net->tls_session_db_size = 0;
-		net->tls_session_db_expiration_interval = 0;
-		net->tls_session_cache = NULL;
-		net->tls_session_ticket_key = NULL;
-		uv_timer_init(loop, &net->tls_session_ticket_key_timer);
+		net->tls_session_ticket_ctx = NULL;
 	}
 }
 
@@ -114,14 +110,9 @@ void network_deinit(struct network *net)
 		tls_credentials_free(net->tls_credentials);
 		tls_client_params_free(&net->tls_client_params);
 		net->tls_credentials = NULL;
-		if (net->tls_session_cache != NULL) {
-			tls_session_cache_db_delete(net->tls_session_cache);
+		if (net->tls_session_ticket_ctx != NULL) {
+			tls_session_ticket_ctx_destroy(net->tls_session_ticket_ctx);
 		}
-		if (net->tls_session_ticket_key != NULL) {
-			tls_session_ticket_key_delete(net->tls_session_ticket_key);
-		}
-		tls_session_ticket_timer_stop(&net->tls_session_ticket_key_timer);
-		uv_close((uv_handle_t *)&net->tls_session_ticket_key_timer, NULL);
 	}
 }
 

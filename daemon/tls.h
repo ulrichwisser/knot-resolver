@@ -66,8 +66,6 @@ struct tls_session_cache_db_entry;
 
 typedef lru_t(struct tls_session_cache_db_entry) tls_session_cache_db_t;
 
-typedef gnutls_datum_t tls_ticket_key_t;
-
 struct tls_common_ctx {
 	bool client_side;
 	gnutls_session_t tls_session;
@@ -102,6 +100,8 @@ struct tls_client_ctx_t {
 	struct tls_common_ctx c;
 	struct tls_client_paramlist_entry *params;
 };
+
+struct tls_session_ticket_ctx;
 
 /*! Create an empty TLS context in query context */
 struct tls_ctx_t* tls_new(struct worker_ctx *worker);
@@ -168,10 +168,9 @@ int tls_client_ctx_set_params(struct tls_client_ctx_t *ctx,
 			      struct tls_client_paramlist_entry *entry,
 			      struct session *session);
 
-tls_session_cache_db_t *tls_session_cache_db_allocate(size_t tls_session_db_size);
-void tls_session_cache_db_delete(tls_session_cache_db_t *tls_session_cache_db);
-
-tls_ticket_key_t *tls_session_ticket_key_allocate(void);
-void tls_session_ticket_key_delete(tls_ticket_key_t *tls_session_ticket_key);
-int tls_session_ticket_timer_start(uv_timer_t* timer);
-int tls_session_ticket_timer_stop(uv_timer_t* timer);
+/** Create the session ticket context and copy the salt. */
+struct tls_session_ticket_ctx* tls_session_ticket_ctx_create(uv_loop_t *loop,
+							     const char *salt,
+							     size_t salt_len);
+/** Free all resources of the session ticket context. */
+void tls_session_ticket_ctx_destroy(struct tls_session_ticket_ctx *ctx);

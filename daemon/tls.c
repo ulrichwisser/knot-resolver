@@ -52,6 +52,8 @@
 #define tls_memset memset
 #endif
 
+#define TLS_SESSION_TICKET_KEY_REGENERATION_INTERVAL 3600000
+
 static char const server_logstring[] = "tls";
 static char const client_logstring[] = "tls_client";
 
@@ -76,6 +78,12 @@ struct session_ticket_key {
 	char key[SESSION_KEY_SIZE];
 	uint16_t hash_len;
 	char hash_data[];
+};
+
+struct tls_session_ticket_ctx {
+	size_t epoch;
+	uv_timer_t key_timer;
+	struct session_ticket_key *key;
 };
 
 /** Check invariants, based on gnutls version. */
@@ -144,7 +152,7 @@ static inline gnutls_datum_t session_ticket_key_get(struct session_ticket_key *k
 static void session_ticket_key_destroy(struct session_ticket_key *key)
 {
 	assert(key);
-	gnutls_memset(key, 0, offsetof(struct session_ticket_key, hash_data)
+	tls_memset(key, 0, offsetof(struct session_ticket_key, hash_data)
 				+ key->hash_len);
 	free(key);
 }
@@ -259,15 +267,10 @@ struct tls_ctx_t *tls_new(struct worker_ctx *worker)
 	gnutls_transport_set_ptr(tls->c.tls_session, tls);
 	gnutls_transport_set_push_function(tls->c.tls_session, worker_gnutls_push);
 
-	if (net->tls_session_cache != NULL) {
-		gnutls_db_set_retrieve_function(tls->c.tls_session, session_db_fetch);
-		gnutls_db_set_store_function(tls->c.tls_session, session_db_store);
-		gnutls_db_set_ptr(tls->c.tls_session,tls);
-	}
-
-	if (net->tls_session_ticket_key != NULL) {
-		gnutls_session_ticket_enable_server(tls->c.tls_session,
-						    net->tls_session_ticket_key);
+	if (net->tls_session_ticket_ctx != NULL) {
+		assert(net->tls_session_ticket_ctx->key);
+		gnutls_datum_t session_ticket_key = session_ticket_key_get(net->tls_session_ticket_ctx->key);
+		gnutls_session_ticket_enable_server(tls->c.tls_session, &session_ticket_key);
 	}
 
 	return tls;
@@ -1054,119 +1057,75 @@ int tls_client_ctx_set_params(struct tls_client_ctx_t *ctx,
 	return kr_ok();
 }
 
-tls_session_cache_db_t *tls_session_cache_db_allocate(size_t tls_session_db_size)
-{
-	assert(tls_session_db_size > 0);
-	tls_session_cache_db_t *lru = NULL;
-	if (tls_session_db_size > 0) {
-		lru_create(&lru, tls_session_db_size, NULL, NULL);
-	}
-	return lru;
-}
-
-void tls_session_cache_db_delete(tls_session_cache_db_t *tls_session_cache_db)
-{
-	if (tls_session_cache_db != NULL) {
-		lru_free(tls_session_cache_db);
-	}
-}
-
-int session_db_store(void *db, gnutls_datum_t key, gnutls_datum_t data)
-{
-	struct tls_ctx_t *tls = (struct tls_ctx_t *)db;
-	struct worker_ctx *worker = tls->c.worker;
-	struct network *net = &worker->engine->net;
-	tls_session_cache_db_t *cache_db = net->tls_session_cache;
-	struct tls_session_cache_db_entry *entry = lru_get_impl(&cache_db->lru, (const char *)key.data, key.size,
-								sizeof(struct tls_session_cache_db_entry) + data.size,
-								true, NULL);
-	if (entry == NULL) {
-		return -1;
-	}
-	entry->session_data_size = data.size;
-	memcpy(entry->session_data, data.data, data.size);
-	return 0;
-}
-
-gnutls_datum_t session_db_fetch(void *db, gnutls_datum_t key)
-{
-	gnutls_datum_t ret = { NULL, 0 };
-	struct tls_ctx_t *tls = (struct tls_ctx_t *)db;
-	struct worker_ctx *worker = tls->c.worker;
-	struct network *net = &worker->engine->net;
-	tls_session_cache_db_t *cache_db = net->tls_session_cache;
-	struct tls_session_cache_db_entry *entry = lru_get_try(cache_db, (const char *)key.data, key.size);
-	if (entry != NULL) {
-		gnutls_datum_t check_time = { .data = entry->session_data,
-					      .size = entry->session_data_size };
-		time_t t = gnutls_db_check_entry_time(&check_time);
-		time_t time_since_creation = time(0) - t;
-
-		if (time_since_creation < 0) {
-			return ret;
-		}
-		if (time_since_creation > net->tls_session_db_expiration_interval) {
-			return ret;
-		}
-
-		unsigned char *data = gnutls_malloc(entry->session_data_size);
-		if (data == NULL) {
-			return ret;
-		}
-
-		ret.data = data;
-		ret.size = entry->session_data_size;
-		memcpy(ret.data, entry->session_data, ret.size);
-	}
-	return ret;
-}
-
-tls_ticket_key_t *tls_session_ticket_key_allocate(void)
-{
-	gnutls_datum_t tls_session_ticket_key = { NULL, 0 };
-	gnutls_datum_t *res = NULL;
-	int err = gnutls_session_ticket_key_generate(&tls_session_ticket_key);
-	if (err == GNUTLS_E_SUCCESS) {
-		res = malloc(sizeof(gnutls_datum_t));
-		if (res != NULL) {
-			*res = tls_session_ticket_key;
-		}
-	}
-	return res;
-}
-
-void tls_session_ticket_key_delete(tls_ticket_key_t *tls_session_ticket_key)
-{
-	if (tls_session_ticket_key != NULL) {
-		tls_memset(tls_session_ticket_key->data, 0,
-			   tls_session_ticket_key->size);
-		gnutls_free(tls_session_ticket_key->data);
-		free(tls_session_ticket_key);
-	}
-}
-
 static void session_ticket_timer_callback(uv_timer_t *timer)
 {
-	tls_ticket_key_t **tls_session_ticket_key = (tls_ticket_key_t **)timer->data;
-	assert(tls_session_ticket_key);
-	if (*tls_session_ticket_key) {
-		tls_session_ticket_key_delete(*tls_session_ticket_key);
-	}
+	struct tls_session_ticket_ctx *ctx = (struct tls_session_ticket_ctx *)timer->data;
+	struct session_ticket_key *key = ctx->key;
+	assert(key);
+	ctx->epoch += 1;
+	session_ticket_key_recompute(key, ctx->epoch);
 	kr_log_verbose("[tls] TLS session ticket key regeneration\n");
-	*tls_session_ticket_key = tls_session_ticket_key_allocate();
-	uv_timer_again(timer);
+	uv_timer_again(&ctx->key_timer);
 }
 
-int tls_session_ticket_timer_start(uv_timer_t* timer)
+struct tls_session_ticket_ctx* tls_session_ticket_ctx_create(uv_loop_t *loop,
+							     const char *salt,
+							     size_t salt_len)
 {
-	assert(timer->data);
-	/* Regenerate session ticket key every hour */
-	return uv_timer_start(timer, session_ticket_timer_callback, 3600000, 3600000);
+	assert(loop && salt && salt_len);
+
+	struct tls_session_ticket_ctx *ctx = malloc(sizeof(struct tls_session_ticket_ctx));
+	if (ctx == NULL) {
+		return NULL;
+	}
+
+	struct session_ticket_key *key = session_ticket_key_create(salt, salt_len);
+	if (key == NULL) {
+		free(ctx);
+		return NULL;
+	}
+
+	if (uv_timer_init(loop, &ctx->key_timer) != 0) {
+		session_ticket_key_destroy(key);
+		free(ctx);
+		return NULL;
+	}
+
+	ctx->key_timer.data = ctx;
+	int res = uv_timer_start(&ctx->key_timer, session_ticket_timer_callback,
+				 TLS_SESSION_TICKET_KEY_REGENERATION_INTERVAL,
+				 TLS_SESSION_TICKET_KEY_REGENERATION_INTERVAL);
+
+	if (res != 0) {
+		session_ticket_key_destroy(key);
+		free(ctx);
+		return NULL;
+	}
+
+	ctx->key = key;
+	ctx->epoch = 0;
+
+	session_ticket_timer_callback(&ctx->key_timer);
+
+	return ctx;
 }
 
-int tls_session_ticket_timer_stop(uv_timer_t* timer)
+void tls_session_ticket_ctx_destroy(struct tls_session_ticket_ctx *ctx)
 {
-	return uv_timer_stop(timer);
+	if (ctx == NULL) {
+		return;
+	}
+
+	if (ctx->key != NULL) {
+		session_ticket_key_destroy(ctx->key);
+		ctx->key = NULL;
+	}
+
+	ctx->epoch = 0;
+	ctx->key_timer.data = NULL;
+	uv_timer_stop(&ctx->key_timer);
+
+	free(ctx);
 }
 
 #undef DEBUG_MSG

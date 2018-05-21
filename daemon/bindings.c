@@ -624,74 +624,43 @@ static int net_tls_padding(lua_State *L)
 	return 1;
 }
 
-/**
- * Allocate data structures to ensure TLS session resumption mechanism working
- * (session id caching as well as session ticket).
- * If structrues were previosly allocated, deletes them. This means that
- * all attempts of session resumption using previosly cached data will fallback
- * to full handshake.
+/* Configure client-side TLS session ticket key generation.
  *
- * if no parameters passed from Lua, only prints current settings.
+ * note  Don't call from CLI when there are forked kresd instances as it
+ *       will break synchronous ticket key regeneration.
  *
- * expects two parameters from Lua -
- * int num -         maximal number of records in the session id database.
- *                   Each particular database record is a
- *                   struct tls_session_cache_db_entry (see tls.c),
- *                   tls_session_cache_db_entry->session_data points to copy of the data
- *                   allocated by gnutls after establishing tls connection.
- *                   Database contains <num> or less last recently used records,
- *		     so it is maximal number of session that can be resumed at once.
- * int exp_interval - record expiration interval in seconds.
- *                   If lifetime of db records exceeds exp_interval,
- *                   session won't be resumed.
- *
- * expiration of session ticket is hardcored to 3600 seconds (see tls_session_ticket_timer_start()).
+ * Expected parameters from lua
+ * salt  salt string used for session ticket key generation.
+ *       It's guaranteed that all forked kresd instances
+ *       with same salt string will always use the same session ticket key
+ *       without additional synchronization.
+ *       If salt string is empty, kresd won't use session tickets at server side
+ *       and therefore won't support session resumption.
  */
-static int net_tls_session_db(lua_State *L)
+
+static int net_tls_sticket_key_salt_string(lua_State *L)
 {
+
+	if (lua_gettop(L) != 1 || !lua_isstring(L, 1)) {
+		lua_pushstring(L, "net.tls_client_sticket takes one parameter: (\"salt string\")");
+		lua_error(L);
+	}
+
 	struct engine *engine = engine_luaget(L);
-
-	/* Only return current size and expiration interval. */
-	if (lua_gettop(L) == 0) {
-		lua_newtable(L);
-		lua_pushinteger(L, engine->net.tls_session_db_size);
-		lua_setfield(L, -2, "maximal size");
-		lua_pushinteger(L, engine->net.tls_session_db_expiration_interval);
-		lua_setfield(L, -2, "expiration interval");
-
-		return 1;
-	}
-
-	if ((lua_gettop(L) != 2)) {
-		lua_pushstring(L, "net.tls_session_db takes two parameters: (\"maximal number of records\", \"expiration interval in seconds\")");
-		lua_error(L);
-	}
-
-	size_t db_size  = lua_tointeger(L, 1);
-	int expiration_interval  = lua_tointeger(L, 2);
-	if (expiration_interval < 0) {
-		lua_pushstring(L, "net.tls_session_db(): expiration interval is negative.");
-		lua_error(L);
-	}
-
 	struct network *net = &engine->net;
-	if (net->tls_session_db_size != db_size) {
-		net->tls_session_db_size = db_size;
-		tls_session_cache_db_delete(net->tls_session_cache);
-		net->tls_session_cache = tls_session_cache_db_allocate(net->tls_session_db_size);
+	const char *salt = lua_tostring(L, 1);
+	size_t salt_len = strlen(salt);
+	if (net->tls_session_ticket_ctx != NULL) {
+		tls_session_ticket_ctx_destroy(net->tls_session_ticket_ctx);
+		net->tls_session_ticket_ctx = NULL;
 	}
-	engine->net.tls_session_db_expiration_interval = expiration_interval;
-
-	/* Force tls session ticket key regeneration  */
-	if (net->tls_session_ticket_key != NULL) {
-		tls_session_ticket_timer_stop(&net->tls_session_ticket_key_timer);
-		net->tls_session_ticket_key_timer.data = NULL;
-		tls_session_ticket_key_delete(net->tls_session_ticket_key);
+	if (salt_len) {
+		net->tls_session_ticket_ctx = tls_session_ticket_ctx_create(net->loop, salt, salt_len);
+		if (net->tls_session_ticket_ctx == NULL) {
+			lua_pushstring(L, "net.tls_client_sticket - can't create session ticket context");
+			lua_error(L);
+		}
 	}
-
-	net->tls_session_ticket_key = tls_session_ticket_key_allocate();
-	net->tls_session_ticket_key_timer.data = &net->tls_session_ticket_key;
-	tls_session_ticket_timer_start(&net->tls_session_ticket_key_timer);
 
 	lua_pushboolean(L, true);
 	return 1;
@@ -767,7 +736,7 @@ int lib_net(lua_State *L)
 		{ "tls_server",     net_tls },
 		{ "tls_client",     net_tls_client },
 		{ "tls_padding",    net_tls_padding },
-		{ "tls_session_db", net_tls_session_db },
+		{ "tls_sticket_salt_string", net_tls_sticket_key_salt_string },
 		{ "outgoing_v4",    net_outgoing_v4 },
 		{ "outgoing_v6",    net_outgoing_v6 },
 		{ NULL, NULL }

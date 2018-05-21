@@ -48,11 +48,7 @@ struct network {
 	map_t endpoints;
 	struct tls_credentials *tls_credentials;
 	map_t tls_client_params;
-	size_t tls_session_db_size;
-	time_t tls_session_db_expiration_interval;
-	tls_session_cache_db_t *tls_session_cache;
-	tls_ticket_key_t *tls_session_ticket_key;
-	uv_timer_t tls_session_ticket_key_timer;
+	struct tls_session_ticket_ctx *tls_session_ticket_ctx;
 };
 
 void network_init(struct network *net, uv_loop_t *loop);
