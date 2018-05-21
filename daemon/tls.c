@@ -64,9 +64,6 @@ struct tls_session_cache_db_entry {
 
 static int client_verify_certificate(gnutls_session_t tls_session);
 
-static int session_db_store(void *db, gnutls_datum_t key, gnutls_datum_t data);
-static gnutls_datum_t session_db_fetch(void *db, gnutls_datum_t key);
-
 
 /* FIXME: review session_ticket_key* again before merge! */
 /** Value from gnutls:lib/ext/session_ticket.c
