@@ -412,6 +412,25 @@ static int cache_peek_real(kr_layer_t *ctx, knot_pkt_t *pkt)
 		}
 		break;
 	case KNOT_RRTYPE_CNAME: {
+		if (qry->stype == KNOT_RRTYPE_DS) {
+			/* DS record was not found by itself,
+			 * but there is an CNAMEd record.
+			 * It is a bit dangerous because of
+			 * broken zones with CNAME at apex.
+			 * Example.
+			 * 1) Current zone is secured.
+			 * 2) We have got the delegation with properly proved
+			 *    DS nonexistence.
+			 * 3) Target zone has CNAME at apex, CNAME now is cached.
+			 * 4) Next query is for DS.
+			 * 5) We found CNAMEd record and follow it.
+			 * 6) At last we have an answer with CNAME + SOA, but
+			 *    without any DNSSEC related records; so that
+			 *    DS nonexistence can not be proven.
+			 *
+			 */
+			return ctx->state;
+		}
 		int32_t new_ttl = get_new_ttl(val_cut.data, 
 			qry, qry->sname, KNOT_RRTYPE_CNAME, qry->timestamp.tv_sec);
 		ret = answer_simple_hit(ctx, pkt, KNOT_RRTYPE_CNAME, val_cut.data,
