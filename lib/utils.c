@@ -1010,3 +1010,12 @@ finish:
 	++d;
 	return d - dst;
 }
+
+uint32_t kr_rrset_ttl(const knot_rrset_t *rr)
+{
+#if KNOT_VERSION_HEX < ((2 << 16) | (7 << 8) | 0)
+	return knot_rrset_ttl(rr);
+#else
+	return rr->ttl;
+#endif
+}

@@ -440,3 +440,6 @@ static inline int kr_dname_lf(uint8_t *dst, const knot_dname_t *src, bool add_wi
 	memcpy(dst, right_aligned_dname_start, len + 1);
 	return KNOT_EOK;
 };
+
+/** Returns TTL for givan rrset. */
+uint32_t kr_rrset_ttl(const knot_rrset_t *rr);

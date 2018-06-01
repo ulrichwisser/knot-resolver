@@ -259,7 +259,7 @@ knot_rdata_t *knot_rdataset_at(const knot_rdataset_t *, size_t);
 int knot_rdataset_merge(knot_rdataset_t *, const knot_rdataset_t *, knot_mm_t *);
 int knot_rrset_add_rdata(knot_rrset_t *, const uint8_t *, const uint16_t, const uint32_t, knot_mm_t *);
 void knot_rrset_init_empty(knot_rrset_t *);
-uint32_t knot_rrset_ttl(const knot_rrset_t *);
+uint32_t kr_rrset_ttl(const knot_rrset_t *);
 int knot_rrset_txt_dump(const knot_rrset_t *, char **, size_t *, const knot_dump_style_t *);
 int knot_rrset_txt_dump_data(const knot_rrset_t *, const size_t, char *, const size_t, const knot_dump_style_t *);
 size_t knot_rrset_size(const knot_rrset_t *);
